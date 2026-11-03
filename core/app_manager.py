@@ -14,19 +14,14 @@ CALIBRATION_WIZARD_APP_ID = app_registry.CALIBRATION_WIZARD
 # Imported by whichever recipe app runs, and by neither one afterwards. It is
 # evicted with them so the base class does not stay resident for a session
 # that never opens Malt or Hop again.
-# The setup portal is the same case for Settings: its HTML and routes stay on
-# the heap otherwise, and the launcher has to rebuild its screen next to them
-# when Settings was the boot app. webportal.config_keys is left alone, as
-# storage.config_registry loads it at boot and keeps it.
+# The listener, its dispatcher and portal_runtime have application-independent
+# lifetimes. Only heavyweight page/feature helpers are evicted on app changes.
 _COMPANION_MODULES = (
     "apps.recipe_app",
-    "webportal.setup_portal_service",
-    "webportal.portal_routes",
     "webportal.device_routes",
     "webportal.recovery",
     "webportal.device_script",
     "webportal.portal_html",
-    "webportal.request_limits",
     "webportal.multipart",
     "storage.config_backup",
 )
@@ -90,6 +85,20 @@ class AppManager:
     def active_app_id(self):
         """Read-only accessor used by standby to inhibit on specific apps."""
         return self._active_app_id
+
+    def prepare_portal_client(self):
+        if self._active_app_id != app_registry.SETTINGS:
+            return False
+        app = self._apps.get(self._active_app_id)
+        release = getattr(app, "_release_screen_for_portal_client", None)
+        if release:
+            release()
+            return True
+        return False
+
+    def portal_operation_active(self):
+        return self._active_app_id in (
+            app_registry.KEG, app_registry.CALIBRATION_WIZARD, app_registry.UPDATER)
 
     def standby_inhibited(self):
         """True while the active app must not be interrupted by standby.

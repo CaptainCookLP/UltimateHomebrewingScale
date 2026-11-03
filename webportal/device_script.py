@@ -21,7 +21,7 @@ async function refresh(){
   const s=await request('/simulation/status');
   el('sim-status').textContent=s.enabled?'SIMULATION: '+s.weightG.toFixed(1)+' g / target '+s.targetG+' g / '+(s.stable?'stable':'moving'):'Real scale active. Enable test mode and save to simulate.';
   ['sim-set','sim-target','sim-tare'].forEach(id=>el(id).disabled=!s.enabled);
- }catch(error){el('wifi-status').textContent='Portal unreachable. Reconnect to UHS-Setup or open the new IP.';}
+ }catch(error){el('wifi-status').textContent=error.message;}
  finally{busy=false;}
 }
 el('wifi-scan').onclick=async()=>{

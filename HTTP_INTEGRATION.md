@@ -79,7 +79,7 @@ Resuming after no-flow detection retains the same session. A new keg starts a
 new session. Batch selection and HTTP plan retrieval happen before filling.
 
 Before opening the relay, event networking is suspended and any already-active
-request is allowed to finish. No HTTP requests run while the valve is open or
+request is allowed to finish. No outgoing event HTTP requests run while the valve is open or
 while a stalled fill is waiting to resume. Tare, target detection, relay cutoff
 and no-flow protection stay in the local state machine.
 

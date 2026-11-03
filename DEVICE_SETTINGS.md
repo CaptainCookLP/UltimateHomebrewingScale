@@ -49,7 +49,9 @@ The M5Dial uses 2.4 GHz Wi-Fi; a 5 GHz-only SSID will not appear.
 The scan, diagnostic and simulation endpoints share the portal's existing
 optional token check. No submitted passwords are returned in JSON diagnostics
 or driver error messages. Like the existing setup portal, these controls are
-available while the device is in Settings, not during a physical filling.
+available independently of the active display app while the device is awake.
+The keg filler, calibration wizard and firmware installer temporarily lock
+settings access (HTTP 409); the small `/health` endpoint remains available.
 
 ## Simulated scale
 
@@ -74,7 +76,8 @@ uses five sampled readings, rather than always claiming stable weight.
 The General tab provides a live preview, **Set test weight**, **Ramp to target**
 and **Tare simulated scale**. These buttons change only the running simulator;
 persistent defaults are edited in the main settings form. After leaving
-Settings the web server stops, and the simulator continues locally. In fixed
+Settings the web server remains available, including live simulator controls
+while using normal weighing apps. In fixed
 mode a new target applies immediately; switch to ramp mode and save/restart
 for gradual changes.
 
@@ -131,7 +134,7 @@ With a rebuilt firmware, connect to `UHS-Setup` and try:
 - `http://192.168.4.1:8080/recovery` — minimal setup without the full page.
 - `http://192.168.4.1:8080/` — full settings, with automatic low-memory fallback.
 
-Use HTTP, not HTTPS. The server is active while the Dial is in Settings. A ping
+Use HTTP, not HTTPS. The server remains active after leaving Settings. A ping
 response alone does not prove that the HTTP listener has started. If the issue
 persists, collect the USB output while entering Settings; `[settings] portal
 init error` includes the exception that stopped startup. These changes address
@@ -174,3 +177,39 @@ Regression checks: `python tools/verify_wifi_recovery.py`. This fixes a known
 intentional reboot path; it does not diagnose unobserved native resets during
 rotary input. Capture one uninterrupted USB session including startup and the
 input that triggers a problem to investigate those separately.
+
+
+## Persistent settings access
+
+`webportal.portal_runtime` now owns one HTTP listener for the whole application.
+The main loop services it once per iteration, after local app/control logic.
+Settings borrows the listener to display the QR URL and does not close the
+socket or setup AP when the operator returns to the launcher or a weighing app.
+
+On an ordinary configured boot, the listener starts automatically once the
+station is connected, even if Settings was never opened. Use
+`http://<device-IP>:8080/` on the home network. During first-time setup the
+`UHS-Setup` AP stays available after leaving the Settings screen. After changing
+networks, use the station's new DHCP IP; opening Settings refreshes the QR URL.
+Configured standby/deep sleep still turns the device off normally.
+
+The QR/screen cleanup callback checks which app is currently active. Browser
+requests outside Settings do not release or replace the weighing/launcher
+screen and do not run that screen cleanup's explicit garbage collection.
+The persistent runtime, listener and dispatcher are excluded from app-module
+eviction; large page helpers remain lazy and can be reclaimed on app switches.
+The existing minimal recovery page still handles full-renderer memory failures.
+
+Settings POSTs still apply their usual reboot behavior. The keg filler,
+calibration wizard and updater block portal features with HTTP 409 while those
+apps are open, so remote saves, scans, Wi-Fi tests and rendering cannot interrupt
+those operations. `/health` remains a small liveness endpoint. If a restart was
+already queued and an operator enters a protected app before the HTTP response
+finishes, the restart waits until the protected app is left. Unsaved candidate
+Wi-Fi credentials are restored on leaving Settings without tearing down the
+listener/AP.
+
+Validation: `python tools/verify_persistent_portal.py` covers automatic startup,
+shared service lifetime, leaving Settings, AP-only access, display preservation,
+module lifetime, protected routes and deferred restarts. Hardware validation is
+still needed for simultaneous UI/API/portal memory headroom on the M5Dial.

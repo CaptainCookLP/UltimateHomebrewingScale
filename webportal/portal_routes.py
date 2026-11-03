@@ -31,6 +31,12 @@ def handle_request(service, client, method, target, body):
     path, query = portal._split_target(target)
     send = service._send
 
+    blocked = getattr(service, "operations_blocked", None)
+    if blocked and blocked() and path != "/health":
+        send(client, 409, "application/json",
+             '{"error":"Finish keg filling, calibration or installation before changing settings.","code":"operation_in_progress"}')
+        return
+
     if path in ("/recovery", "/recovery/save"):
         from webportal.recovery import handle
         handle(service, client, method, path, query, body, portal)

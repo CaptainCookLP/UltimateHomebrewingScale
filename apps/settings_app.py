@@ -92,22 +92,8 @@ class SettingsApp(BaseApp):
                         print("[MEM] settings.pre_import free={}".format(gc.mem_free()))
                     except Exception:
                         pass
-                from webportal.setup_portal_service import SetupPortalService
-                debug_portal = False
-                try:
-                    import config
-
-                    debug_portal = bool(getattr(config, "DEBUG", False))
-                except Exception:
-                    pass
-
-                self._portal = SetupPortalService(
-                    wifi_device=self.hardware.wifi,
-                    scale_device=self.hardware.scale,
-                    debug=debug_portal,
-                    i18n=self.i18n,
-                    before_client=self._release_screen_for_portal_client,
-                )
+                from webportal.portal_runtime import get_runtime
+                self._portal = get_runtime(self.hardware, self.i18n).service()
                 gc.collect()
                 if self._debug:
                     try:
@@ -115,6 +101,7 @@ class SettingsApp(BaseApp):
                     except Exception:
                         pass
 
+            self._portal._before_client_ran = False
             info = self._portal.start_or_resume()
             if self._debug:
                 try:
@@ -152,13 +139,9 @@ class SettingsApp(BaseApp):
 
     def on_exit(self):
         super().on_exit()
-        portal = self._portal
         self._portal = None
-        if portal:
-            try:
-                portal.stop()
-            except Exception as e:
-                self._print_exception("[settings] portal stop error:", e)
+        from webportal.portal_runtime import get_runtime
+        get_runtime(self.hardware, self.i18n).leave_settings()
         self._screen = None
         try:
             import gc
@@ -208,17 +191,4 @@ class SettingsApp(BaseApp):
             return "launcher"
         if self._check_back(None):
             return "launcher"
-        try:
-            if self._portal:
-                self._portal.tick()
-                consume_events = getattr(self._portal, "consume_events", None)
-                if consume_events:
-                    for event in consume_events():
-                        if event == "INITIAL_PAGE_SERVED" and not self._portal_status_shown:
-                            self._portal_status_shown = True
-                            self._release_screen_for_portal_client()
-        except Exception as e:
-            if not self._tick_error_logged:
-                self._tick_error_logged = True
-                self._print_exception("[settings] portal tick error:", e)
         return None

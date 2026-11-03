@@ -231,6 +231,9 @@ def main():
         initial_app_id=initial_app_id,
     )
     runtime_debug.snapshot("boot.after_app_manager", collect=True)
+    from webportal.portal_runtime import get_runtime
+    portal_runtime = get_runtime(hardware, i18n_instance)
+    portal_runtime.bind(app_manager)
     standby_manager = standby.configure(config)
     runtime_debug.snapshot("boot.ui_ready", collect=True)
     watchdog.start(allow_start=initial_app_id != "updater_app")
@@ -238,6 +241,7 @@ def main():
         M5.update()
         hardware.tick()
         app_manager.tick()
+        portal_runtime.tick()
         runtime_watchdog.feed()
         standby_manager.tick(hardware, app_manager)
         time.sleep_ms(10)

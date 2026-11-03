@@ -245,7 +245,7 @@ def _metric_settings(updates, current):
 
 
 class SetupPortalService:
-    def __init__(self, wifi_device=None, debug=False, i18n=None, before_client=None, scale_device=None):
+    def __init__(self, wifi_device=None, debug=False, i18n=None, before_client=None, scale_device=None, operations_blocked=None):
         # Start networking without importing the large HTML renderer. The
         # first browser request releases the QR screen before loading it.
         from webportal.portal_routes import handle_request
@@ -256,6 +256,7 @@ class SetupPortalService:
         self._debug = bool(debug)
         self._i18n = i18n
         self._before_client = before_client
+        self._operations_blocked = operations_blocked
         self._cfg = _load_setup_cfg()
         self._listener = None
         self._mode = "none"
@@ -305,6 +306,9 @@ class SetupPortalService:
 
     def start_or_resume(self):
         self._paused = False
+        if self._listener is not None:
+            self._refresh_station_url()
+            return self.info()
         self._log("start_or_resume begin")
         self._ensure_network()
         self._log("network mode={} sta_ip={} ap_ip={} url={}".format(
@@ -316,6 +320,20 @@ class SetupPortalService:
         self._start_server_if_needed()
         self._log("start_or_resume ready listener={}".format(self._listener is not None))
         return self.info()
+
+    def operations_blocked(self):
+        return bool(self._operations_blocked and self._operations_blocked())
+
+    def _refresh_station_url(self):
+        wifi = self._wifi
+        wlan = getattr(wifi, "_wlan", None)
+        if wifi and wifi.connected() and wlan is not None:
+            address = wlan.ifconfig()[0]
+            if address and address != "0.0.0.0":
+                self._mode = "sta"
+                self._sta_ip = address
+                self._url = build_portal_url(sta_ip=address, port=PORTAL_HTTP_PORT,
+                    token=self._token if self._cfg.get("require_token") else "")
 
     def info(self):
         return {
@@ -377,6 +395,10 @@ class SetupPortalService:
     def tick(self):
         if self._paused or not self._listener:
             return
+        if self._reboot_after_response and self._client is None and not self.operations_blocked():
+            self._reboot_after_response = False
+            self._reboot()
+            return
         if self._wifi_test:
             self._wifi_test.tick()
         if self._client is None:
@@ -423,7 +445,7 @@ class SetupPortalService:
             self._log("client error:", e)
             self._close_client()
         # Also after a failed write: the settings are saved either way.
-        if self._reboot_after_response and self._client is None:
+        if self._reboot_after_response and self._client is None and not self.operations_blocked():
             self._reboot_after_response = False
             self._reboot()
 
@@ -493,7 +515,7 @@ class SetupPortalService:
             self._close_client()
             return
         self._log("request ready", method, target, "body", len(self._request_body))
-        if self._request_needs_screen_memory(method, target):
+        if not self.operations_blocked() and self._request_needs_screen_memory(method, target):
             self._run_before_client()
         self._response_is_initial_page = method == "GET" and _split_target(target)[0] == "/"
         self._handle_request(self, self._client, method, target, self._request_body)
@@ -626,7 +648,8 @@ class SetupPortalService:
             return
         try:
             self._log("cleanup begin")
-            callback()
+            if callback() is False:
+                return  # No display cleanup or explicit GC outside Settings.
             self._log("cleanup done")
         except Exception as e:
             self._log("before client cleanup error:", e)
