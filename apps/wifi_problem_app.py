@@ -32,6 +32,14 @@ class WifiProblemApp(BaseApp):
         )
 
     def tick(self):
+        # DHCP can succeed after the initial connection timeout. Never keep
+        # showing a failure or reboot on OK once the link has recovered.
+        wifi = getattr(self.hardware, "wifi", None)
+        if wifi is not None and wifi.connected():
+            button = self.hardware.button
+            if button:
+                button.was_short_pressed()  # Do not carry OK into the launcher.
+            return "launcher"
         button = self.hardware.button
         if button and button.was_short_pressed():
             self._restart_on_setup_access_point()
