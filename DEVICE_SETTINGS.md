@@ -160,3 +160,17 @@ After attempting a failing page in a newly built firmware, the small endpoint
 `bodyBytes`/`headerBytes`, `sentBytes` and any write error type. It follows the
 portal's token policy. `sentBytes` means accepted by the socket API, not a
 remote browser acknowledgement. `/health` without the parameter stays unchanged.
+
+
+### Late DHCP connection on the WLAN error screen
+
+The WLAN error screen now re-checks the live link on every tick and returns to
+the launcher if DHCP succeeds after the initial timeout. A queued OK press is
+consumed instead of triggering the old, explicit reboot into setup mode or
+carrying into the launcher's app selection. If the device remains offline, OK
+continues to offer the existing restart into the setup AP.
+
+Regression checks: `python tools/verify_wifi_recovery.py`. This fixes a known
+intentional reboot path; it does not diagnose unobserved native resets during
+rotary input. Capture one uninterrupted USB session including startup and the
+input that triggers a problem to investigate those separately.
